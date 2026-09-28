@@ -22,11 +22,17 @@ class CalculatorDisplay extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: AppSizes.paddingBody, vertical: AppSizes.paddingInside),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSizes.paddingBody,
+        vertical: AppSizes.paddingInside,
+      ),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkDisplayBg : AppColors.lightDisplayBg,
         borderRadius: BorderRadius.circular(AppSizes.cardRadius),
-        border: Border.all(color: isDark ? Colors.white10 : Colors.black12, width: 1),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.black12,
+          width: 1,
+        ),
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -43,7 +49,9 @@ class CalculatorDisplay extends StatelessWidget {
                   tooltip: 'Delete',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary,
                   onPressed: onDelete,
                 ),
 
@@ -56,7 +64,9 @@ class CalculatorDisplay extends StatelessWidget {
                       key: const Key('calculator_expression_text'),
                       style: TextStyle(
                         fontSize: 16,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        color: isDark
+                            ? AppColors.darkTextSecondary
+                            : AppColors.lightTextSecondary,
                         fontWeight: FontWeight.w400,
                       ),
                     ),
@@ -75,7 +85,11 @@ class CalculatorDisplay extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 42,
                   fontWeight: FontWeight.bold,
-                  color: hasError ? AppColors.error : (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary),
+                  color: hasError
+                      ? AppColors.error
+                      : (isDark
+                            ? AppColors.darkTextPrimary
+                            : AppColors.lightTextPrimary),
                   letterSpacing: 1.2,
                 ),
               ),
