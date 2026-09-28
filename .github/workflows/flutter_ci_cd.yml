@@ -1,84 +1,172 @@
-name: Flutter CI/CD
+name: Universal Flutter CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, dev ]
+    tags:
+      - "v*" # Triggers on tags like v1.0.0, v1.0.1, v2.0.0
   pull_request:
     branches: [ main, master ]
   workflow_dispatch: # Allows manual trigger from GitHub Actions tab
 
+# Permissions required to create GitHub Releases and upload assets
+permissions:
+  contents: write
+
+# Global environment variables for easy configuration across projects
+env:
+  FLUTTER_VERSION: '3.41.6' # Set your project's Flutter version
+  JAVA_VERSION: '17'
+
 jobs:
-  # 1. Code Quality & Test Job
+  # ========================================================
+  # JOB 1: Static Analysis, Code Generation & Unit/Widget Tests
+  # ========================================================
   test:
-    name: Analyze & Test
+    name: Code Quality & Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Setup Java Development Kit (JDK)
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
 
-      - name: Setup Flutter
+      - name: Setup Flutter SDK
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
-          cache-key: "flutter-:os:-:channel:-:version:-:arch:-:hash:"
+          cache-key: "flutter-:os:-${{ env.FLUTTER_VERSION }}-:hash:"
 
-      - name: Print Flutter & Dart Info
+      - name: Print Flutter & Dart Version
         run: |
           flutter --version
           dart --version
 
-      - name: Install Dependencies
+      # Create .env file if ENV_FILE secret is configured in GitHub Repository Secrets
+      - name: Setup Environment Variables (.env)
+        run: |
+          if [ -n "${{ secrets.ENV_FILE }}" ]; then
+            echo "${{ secrets.ENV_FILE }}" > .env
+            echo "Successfully created .env from GitHub Secrets."
+          else
+            echo "No ENV_FILE secret provided. Skipping .env creation."
+          fi
+
+      - name: Install Project Dependencies
         run: flutter pub get
 
-      - name: Verify Formatting & Static Analysis
+      # Automatically runs build_runner only if the project uses it (e.g. injectable, json_serializable)
+      - name: Run Code Generation (build_runner)
         run: |
-          dart format --output=none --set-exit-if-changed .
-          flutter analyze --fatal-infos
+          if grep -q "build_runner" pubspec.yaml; then
+            echo "build_runner detected in pubspec.yaml. Generating code..."
+            dart run build_runner build --delete-conflicting-outputs
+          else
+            echo "No build_runner found in pubspec.yaml. Skipping code generation."
+          fi
+
+      - name: Run Static Code Analysis
+        run: flutter analyze
 
       - name: Run Unit & Widget Tests
         run: flutter test --coverage
 
-  # 2. Build Android APK
-  build-apk:
-    name: Build Android APK
+  # ========================================================
+  # JOB 2: Build Android Release APK and App Bundle (AAB)
+  # ========================================================
+  build-android:
+    name: Build Android (APK & AAB)
     needs: test
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Setup Java Development Kit (JDK)
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
 
-      - name: Setup Flutter
+      - name: Setup Flutter SDK
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
-      - name: Install Dependencies
+      # Create .env file if needed for release build
+      - name: Setup Environment Variables (.env)
+        run: |
+          if [ -n "${{ secrets.ENV_FILE }}" ]; then
+            echo "${{ secrets.ENV_FILE }}" > .env
+            echo "Successfully created .env for release build."
+          fi
+
+      - name: Install Project Dependencies
         run: flutter pub get
 
-      - name: Build Debug APK
-        run: flutter build apk --debug
+      # Run code generation if required
+      - name: Run Code Generation (build_runner)
+        run: |
+          if grep -q "build_runner" pubspec.yaml; then
+            dart run build_runner build --delete-conflicting-outputs
+          fi
 
-      - name: Upload Debug APK Artifact
+      # Optional: Decode Keystore for App Signing if secrets are provided
+      - name: Setup Android Keystore (Optional)
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
+            echo "Keystore decoded successfully."
+          else
+            echo "No Keystore secret found. Building unsigned/default release."
+          fi
+
+      # 1. Build Android Release APK
+      - name: Build Release APK
+        run: flutter build apk --release --no-codesign
+
+      # 2. Build Android Release App Bundle (for Google Play Store)
+      - name: Build Release App Bundle (AAB)
+        run: flutter build appbundle --release --no-codesign
+
+      # Upload Release APK as GitHub Artifact
+      - name: Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: demo-calculator-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
-          retention-days: 7
+          name: app-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14
+
+      # Upload Release App Bundle (AAB) as GitHub Artifact
+      - name: Upload Release AAB Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+          retention-days: 14
+
+      # 3. Publish Official GitHub Release (only runs when a git tag like v1.0.0 is pushed)
+      - name: Publish Official GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/bundle/release/app-release.aab
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
