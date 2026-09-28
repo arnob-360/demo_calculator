@@ -133,11 +133,11 @@ jobs:
 
       # 1. Build Android Release APK
       - name: Build Release APK
-        run: flutter build apk --release --no-codesign
+        run: flutter build apk --release
 
       # 2. Build Android Release App Bundle (for Google Play Store)
       - name: Build Release App Bundle (AAB)
-        run: flutter build appbundle --release --no-codesign
+        run: flutter build appbundle --release
 
       # Upload Release APK as GitHub Artifact
       - name: Upload Release APK Artifact
